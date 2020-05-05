@@ -4,6 +4,7 @@ module MiniLight.Lua where
 import Control.Monad.Catch
 import Control.Monad.State hiding (state)
 import qualified Data.Component.Basic as Basic
+import qualified Data.Text as T
 import Linear
 import MiniLight
 
@@ -53,4 +54,12 @@ evalLuaComponent
   => String
   -> LuaComponentState
   -> LightT env m [Figure]
-evalLuaComponent content state = undefined
+evalLuaComponent content state = return []
+
+reload
+  :: (HasLoaderEnv env, HasLightEnv env, HasLoopEnv env, MonadIO m, MonadMask m)
+  => T.Text
+  -> LightT env m ()
+reload path = do
+  fs <- liftIO $ readFile (T.unpack path)
+  path @@! SetExpr fs
