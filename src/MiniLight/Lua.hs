@@ -6,10 +6,13 @@ import Control.Monad.Catch
 import Control.Monad.State hiding (state)
 import qualified Data.ByteString as BS
 import qualified Data.Component.Basic as Basic
+import Data.IORef
 import Data.Maybe
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TLE
 import qualified Foreign.Lua as Lua
+import Foreign.C.String
+import Foreign.Ptr
 import GHC.Generics (Generic)
 import Linear
 import MiniLight
@@ -67,6 +70,7 @@ evalLuaComponent content state
   | otherwise = do
     result <- liftIO $ Lua.run $ Lua.try $ do
       Lua.openlibs
+      loadLib
       st <- Lua.dostring $ TLE.encodeUtf8 $ T.pack content
       case st of
         Lua.OK -> Lua.callFunc "onDraw" ()
@@ -83,3 +87,13 @@ reload
 reload path = do
   fs <- liftIO $ readFile (T.unpack path)
   path @@! SetExpr fs
+
+loadLib :: Lua.Lua ()
+loadLib = do
+  Lua.registerHaskellFunction "minilight_picture" minilight_picture
+ where
+  minilight_picture :: BS.ByteString -> Lua.Lua (Ptr FigureDSL)
+  minilight_picture cs = liftIO $ do
+    path <- newCString $ T.unpack $ TLE.decodeUtf8 cs
+    fig  <- picture_ path
+    return fig
