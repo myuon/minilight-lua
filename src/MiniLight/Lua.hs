@@ -1,12 +1,21 @@
 {-# LANGUAGE OverloadedStrings #-}
 module MiniLight.Lua where
 
+import qualified Control.Monad.Caster as Caster
 import Control.Monad.Catch
 import Control.Monad.State hiding (state)
+import qualified Data.ByteString as BS
 import qualified Data.Component.Basic as Basic
+import Data.Maybe
 import qualified Data.Text as T
+import qualified Data.Text.Encoding as TLE
+import Foreign.Lua hiding (state)
+import Foreign.Storable.Generic
+import GHC.Generics (Generic)
 import Linear
 import MiniLight
+import MiniLight.FigureDSL
+import qualified SDL
 
 data LuaComponentState = LuaComponentState {
   mousePosition :: V2 Int
@@ -54,7 +63,17 @@ evalLuaComponent
   => String
   -> LuaComponentState
   -> LightT env m [Figure]
-evalLuaComponent content state = return []
+evalLuaComponent content state = do
+  result <- liftIO $ run $ do
+    openlibs
+    st <- dostring $ TLE.encodeUtf8 $ T.pack content
+    case st of
+      OK -> fmap Right $ callFunc "onDraw" ()
+      _  -> return $ Left st
+
+  case result of
+    Left  err -> Caster.err err >> return []
+    Right rs  -> liftMiniLight $ fmap catMaybes $ mapM construct rs
 
 reload
   :: (HasLoaderEnv env, HasLightEnv env, HasLoopEnv env, MonadIO m, MonadMask m)
