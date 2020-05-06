@@ -9,8 +9,7 @@ import qualified Data.Component.Basic as Basic
 import Data.Maybe
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TLE
-import Foreign.Lua hiding (state)
-import Foreign.Storable.Generic
+import qualified Foreign.Lua as Lua
 import GHC.Generics (Generic)
 import Linear
 import MiniLight
@@ -63,17 +62,19 @@ evalLuaComponent
   => String
   -> LuaComponentState
   -> LightT env m [Figure]
-evalLuaComponent content state = do
-  result <- liftIO $ run $ do
-    openlibs
-    st <- dostring $ TLE.encodeUtf8 $ T.pack content
-    case st of
-      OK -> fmap Right $ callFunc "onDraw" ()
-      _  -> return $ Left st
+evalLuaComponent content state
+  | content == "" = return []
+  | otherwise = do
+    result <- liftIO $ Lua.run $ Lua.try $ do
+      Lua.openlibs
+      st <- Lua.dostring $ TLE.encodeUtf8 $ T.pack content
+      case st of
+        Lua.OK -> Lua.callFunc "onDraw" ()
+        _      -> Lua.throwException $ "Invalid status: " ++ show st
 
-  case result of
-    Left  err -> Caster.err err >> return []
-    Right rs  -> liftMiniLight $ fmap catMaybes $ mapM construct rs
+    case result of
+      Left  err -> Caster.err err >> return []
+      Right rs  -> liftMiniLight $ fmap catMaybes $ mapM construct rs
 
 reload
   :: (HasLoaderEnv env, HasLightEnv env, HasLoopEnv env, MonadIO m, MonadMask m)
