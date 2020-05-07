@@ -18,6 +18,7 @@ import Linear
 import MiniLight
 import MiniLight.FigureDSL
 import qualified SDL
+import qualified SDL.Vect as Vect
 
 data LuaComponentState = LuaComponentState {
   mousePosition :: V2 Int
@@ -90,10 +91,13 @@ reload path = do
 
 loadLib :: Lua.Lua ()
 loadLib = do
-  Lua.registerHaskellFunction "minilight_picture" minilight_picture
+  Lua.registerHaskellFunction "minilight_picture"   minilight_picture
+  Lua.registerHaskellFunction "minilight_translate" minilight_translate
  where
   minilight_picture :: BS.ByteString -> Lua.Lua (Ptr FigureDSL)
   minilight_picture cs = liftIO $ do
     path <- newCString $ T.unpack $ TLE.decodeUtf8 cs
-    fig  <- picture_ path
-    return fig
+    picture_ path
+
+  minilight_translate :: Int -> Int -> Ptr FigureDSL -> Lua.Lua (Ptr FigureDSL)
+  minilight_translate x y fig = liftIO $ translate_ (Vect.V2 x y) fig

@@ -2,16 +2,32 @@
 module Main where
 
 import Control.Concurrent.MVar
+import Control.Lens
+import Control.Monad
+import Data.Maybe
 import MiniLight
 import MiniLight.Lua
 
 mainFile = "example/main.lua"
 
 main :: IO ()
-main = runLightT $ runMiniloop defConfig initial return
+main = runLightT $ runMiniloop
+  (defConfig { hotConfigReplacement = Just "example", appConfigFile = Just "" })
+  initial
+  (const mainloop)
  where
   initial = do
     comp <- registerComponent mainFile newLuaComponent
     reload mainFile
 
-    return comp
+    return ()
+
+  mainloop :: MiniLoop ()
+  mainloop = do
+    ref <- view _events
+    evs <- liftIO $ tryReadMVar ref
+
+    let notifys = case evs of
+          Just evs -> mapMaybe asNotifyEvent evs
+          _        -> []
+    unless (null notifys) $ reload mainFile
