@@ -2,10 +2,13 @@
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE OverloadedStrings #-}
 module MiniLight.FigureDSL where
 
 import Control.Monad
+import qualified Data.Config.Font as Font
 import qualified Data.Text as T
+import qualified Data.Text.Encoding as TLE
 import Data.Word (Word8)
 import Data.Maybe
 import Foreign.Ptr
@@ -33,6 +36,7 @@ data FigureDSL = FigureDSL {
   clipArg :: CMaybe (Vect.V2 Int, Vect.V2 Int),
   rotateArg :: CMaybe Double,
   pictureArg :: CMaybe CString,
+  textArg :: CMaybe CString,
   rectangleOutlineArg :: CMaybe (Vect.V4 Word8, Vect.V2 Int),
   rectangleFilledArg :: CMaybe (Vect.V4 Word8, Vect.V2 Int),
   triangleOutlineArg :: CMaybe (Vect.V4 Word8, Vect.V2 Int),
@@ -45,6 +49,7 @@ defFigureDSL = FigureDSL
   , translateArg        = CNone 0
   , clipArg             = CNone (0,0)
   , rotateArg           = CNone 0
+  , textArg = CNone nullPtr 
   , pictureArg          = CNone nullPtr
   , rectangleOutlineArg = CNone (0,0)
   , rectangleFilledArg  = CNone (0,0)
@@ -72,7 +77,13 @@ construct ptr
         -> fmap (fmap (clip $ SDL.Rectangle (SDL.P p) q)) $ construct ptr
       FigureDSL { instruction = 3, rotateArg = CJust v, recursive = CJust ptr }
         -> fmap (fmap (rotate v)) $ construct ptr
-      -- FigureDSL { instruction = 4, textArg = CSome v } -> ...
+      FigureDSL { instruction = 4, textArg = CJust v } -> do
+        font <- Font.loadFontFrom $ Font.Config
+          (FontDescriptor "IPAGothic" (FontStyle False False))
+          24
+          0
+        str <- liftIO $ peekCString v
+        fmap Just $ text font 255 $ T.pack str
       FigureDSL { instruction = 5, pictureArg = CJust v } -> do
         path <- liftIO $ peekCString v
         fmap Just $ picture path
@@ -114,4 +125,10 @@ picture_ :: CString -> IO (Ptr FigureDSL)
 picture_ c = do
   p <- malloc
   poke p $ defFigureDSL { instruction = 5, pictureArg = CJust c }
+  return p
+
+text_ :: CString -> IO (Ptr FigureDSL)
+text_ v = do
+  p <- malloc
+  poke p $ defFigureDSL { instruction = 4, textArg = CJust v }
   return p

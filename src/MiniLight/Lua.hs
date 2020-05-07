@@ -93,6 +93,7 @@ loadLib :: Lua.Lua ()
 loadLib = do
   Lua.registerHaskellFunction "minilight_picture"   minilight_picture
   Lua.registerHaskellFunction "minilight_translate" minilight_translate
+  Lua.registerHaskellFunction "minilight_text"      minilight_text
  where
   minilight_picture :: BS.ByteString -> Lua.Lua (Ptr FigureDSL)
   minilight_picture cs = liftIO $ do
@@ -101,3 +102,8 @@ loadLib = do
 
   minilight_translate :: Int -> Int -> Ptr FigureDSL -> Lua.Lua (Ptr FigureDSL)
   minilight_translate x y fig = liftIO $ translate_ (Vect.V2 x y) fig
+
+  minilight_text :: BS.ByteString -> Lua.Lua (Ptr FigureDSL)
+  minilight_text cs = liftIO $ do
+    path <- newCString $ T.unpack $ TLE.decodeUtf8 cs
+    text_ path
