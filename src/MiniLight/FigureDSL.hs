@@ -36,7 +36,7 @@ data FigureDSL = FigureDSL {
   clipArg :: CMaybe (Vect.V2 Int, Vect.V2 Int),
   rotateArg :: CMaybe Double,
   pictureArg :: CMaybe CString,
-  textArg :: CMaybe CString,
+  textArg :: CMaybe (CString, Vect.V4 Word8),
   rectangleOutlineArg :: CMaybe (Vect.V4 Word8, Vect.V2 Int),
   rectangleFilledArg :: CMaybe (Vect.V4 Word8, Vect.V2 Int),
   triangleOutlineArg :: CMaybe (Vect.V4 Word8, Vect.V2 Int),
@@ -49,7 +49,7 @@ defFigureDSL = FigureDSL
   , translateArg        = CNone 0
   , clipArg             = CNone (0,0)
   , rotateArg           = CNone 0
-  , textArg = CNone nullPtr 
+  , textArg             = CNone (nullPtr, 0)
   , pictureArg          = CNone nullPtr
   , rectangleOutlineArg = CNone (0,0)
   , rectangleFilledArg  = CNone (0,0)
@@ -60,7 +60,7 @@ defFigureDSL = FigureDSL
 freeFigureDSL :: MonadIO m => Ptr FigureDSL -> m ()
 freeFigureDSL pfig = liftIO $ do
   fig <- peek pfig
-  free $ value $ textArg fig
+  free $ fst $ value $ textArg fig
   free $ value $ pictureArg fig
   free $ value $ recursive fig
   free pfig
@@ -89,13 +89,13 @@ construct ptr
         -> fmap (fmap (clip $ SDL.Rectangle (SDL.P p) q)) $ construct ptr
       FigureDSL { instruction = 3, rotateArg = CJust v, recursive = CJust ptr }
         -> fmap (fmap (rotate v)) $ construct ptr
-      FigureDSL { instruction = 4, textArg = CJust v } -> do
+      FigureDSL { instruction = 4, textArg = CJust (v, color) } -> do
         font <- Font.loadFontFrom $ Font.Config
           (FontDescriptor "IPAGothic" (FontStyle False False))
           24
           0
         str <- liftIO $ peekCString v
-        fig <- fmap Just $ text font 255 $ T.pack str
+        fig <- fmap Just $ text font color $ T.pack str
         freeFigureDSL ptr
         return fig
       FigureDSL { instruction = 5, pictureArg = CJust v } -> do
@@ -143,8 +143,8 @@ picture_ c = do
   poke p $ defFigureDSL { instruction = 5, pictureArg = CJust c }
   return p
 
-text_ :: CString -> IO (Ptr FigureDSL)
-text_ v = do
+text_ :: CString -> Vect.V4 Word8 -> IO (Ptr FigureDSL)
+text_ v color = do
   p <- malloc
-  poke p $ defFigureDSL { instruction = 4, textArg = CJust v }
+  poke p $ defFigureDSL { instruction = 4, textArg = CJust (v, color) }
   return p
