@@ -57,6 +57,14 @@ defFigureDSL = FigureDSL
   , recursive           = CNone nullPtr
   }
 
+freeFigureDSL :: MonadIO m => Ptr FigureDSL -> m ()
+freeFigureDSL pfig = liftIO $ do
+  fig <- peek pfig
+  free $ value $ textArg fig
+  free $ value $ pictureArg fig
+  free $ value $ recursive fig
+  free pfig
+
 instance (GStorable a) => GStorable (CMaybe a)
 instance (GStorable a) => GStorable (Vect.V2 a)
 instance (GStorable a) => GStorable (Vect.V4 a)
@@ -66,13 +74,17 @@ instance GStorable FigureDSL
 
 construct :: Ptr FigureDSL -> MiniLight (Maybe Figure)
 construct ptr
-  | ptr == nullPtr = return Nothing
+  | ptr == nullPtr = liftIO (freeFigureDSL ptr) >> return Nothing
   | otherwise = do
     fig <- liftIO $ peek ptr
     case fig of
-      FigureDSL { instruction = 0 } -> return $ Just emptyFigure
+      FigureDSL { instruction = 0 } -> do
+        freeFigureDSL ptr
+        return $ Just emptyFigure
       FigureDSL { instruction = 1, translateArg = CJust v, recursive = CJust ptr }
-        -> fmap (fmap (translate v)) $ construct ptr
+        -> do
+          fig <- fmap (fmap (translate v)) $ construct ptr
+          return fig
       FigureDSL { instruction = 2, clipArg = CJust (p, q), recursive = CJust ptr }
         -> fmap (fmap (clip $ SDL.Rectangle (SDL.P p) q)) $ construct ptr
       FigureDSL { instruction = 3, rotateArg = CJust v, recursive = CJust ptr }
@@ -83,10 +95,14 @@ construct ptr
           24
           0
         str <- liftIO $ peekCString v
-        fmap Just $ text font 255 $ T.pack str
+        fig <- fmap Just $ text font 255 $ T.pack str
+        freeFigureDSL ptr
+        return fig
       FigureDSL { instruction = 5, pictureArg = CJust v } -> do
         path <- liftIO $ peekCString v
-        fmap Just $ picture path
+        fig <- fmap Just $ picture path
+        freeFigureDSL ptr
+        return fig
       FigureDSL { instruction = 6, rectangleOutlineArg = CJust (p, q) } ->
         fmap Just $ rectangleOutline p q
       FigureDSL { instruction = 7, rectangleFilledArg = CJust (p, q) } ->
