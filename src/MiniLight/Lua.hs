@@ -90,10 +90,11 @@ reload path = do
   path @@! SetExpr fs
 
 loadLib :: Lua.Lua ()
-loadLib = do
-  Lua.registerHaskellFunction "minilight_picture"   minilight_picture
-  Lua.registerHaskellFunction "minilight_translate" minilight_translate
-  Lua.registerHaskellFunction "minilight_text"      minilight_text
+loadLib = Lua.requirehs "minilight" $ do
+  Lua.create
+  Lua.addfunction "picture"   minilight_picture
+  Lua.addfunction "translate" minilight_translate
+  Lua.addfunction "text"      minilight_text
  where
   minilight_picture :: BS.ByteString -> Lua.Lua (Ptr FigureDSL)
   minilight_picture cs = liftIO $ do
