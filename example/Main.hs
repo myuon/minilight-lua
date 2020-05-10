@@ -17,7 +17,7 @@ main = runLightT $ runMiniloop
   (const mainloop)
  where
   initial = do
-    comp <- registerComponent mainFile newLuaComponent
+    comp <- registerComponent mainFile =<< liftIO newLuaComponent
     reload mainFile
 
     return ()

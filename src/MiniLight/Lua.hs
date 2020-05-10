@@ -14,6 +14,8 @@ import Data.UnixTime
 import qualified Foreign.Lua as Lua
 import Foreign.C.String
 import Foreign.Ptr
+import Foreign.Marshal.Alloc
+import Foreign.Storable
 import GHC.Generics (Generic)
 import Linear
 import MiniLight
@@ -22,14 +24,14 @@ import qualified SDL
 import qualified SDL.Vect as Vect
 
 data LuaComponentState = LuaComponentState {
-  mousePosition :: V2 Int
-} deriving (Eq, Show)
+  mousePosition :: Ptr (V2 Int)
+}
 
 data LuaComponent = LuaComponent {
   expr :: String,
   state :: LuaComponentState,
-  counter :: Int,
-  updatedAt :: UnixTime
+  updatedAt :: UnixTime,
+  counter :: Int
 }
 
 data LuaComponentEvent
@@ -47,23 +49,30 @@ instance ComponentUnit LuaComponent where
     case asSignal ev of
       Just (SetExpr fs) -> do
         t <- liftIO getUnixTime
-        modify $ \qc -> qc { expr = fs, counter = counter qc + 1, updatedAt = t }
+        modify $ \qc -> qc { expr = fs, updatedAt = t }
       _ -> return ()
 
     case asSignal ev of
-      Just (Basic.MouseOver p) ->
-        modify $ \qc -> qc { state = (state qc) { mousePosition = p }, counter = counter qc + 1 }
+      Just (Basic.MouseOver p) -> do
+        st <- get
+        liftIO $ poke (mousePosition $ state st) p
+
+        modify $ \qc -> qc { counter = counter qc + 1 }
       _ -> return ()
 
-  useCache c1 c2 = updatedAt c1 == updatedAt c2
+  useCache c1 c2 = updatedAt c1 == updatedAt c2 && counter c1 == counter c2
 
-newLuaComponent :: LuaComponent
-newLuaComponent = LuaComponent
-  { expr      = ""
-  , state     = LuaComponentState {mousePosition = 0}
-  , counter   = 0
-  , updatedAt = UnixTime 0 0
-  }
+newLuaComponent :: IO LuaComponent
+newLuaComponent = do
+  p <- malloc
+  poke p 0
+
+  return $ LuaComponent
+    { expr      = ""
+    , state     = LuaComponentState {mousePosition = p}
+    , updatedAt = UnixTime 0 0
+    , counter   = 0
+    }
 
 evalLuaComponent
   :: (HasLightEnv env, MonadIO m, MonadMask m)
@@ -75,7 +84,7 @@ evalLuaComponent content state
   | otherwise = do
     result <- liftIO $ Lua.run $ Lua.try $ do
       Lua.openlibs
-      loadLib
+      loadLib state
       st <- Lua.dostring $ TLE.encodeUtf8 $ T.pack content
       case st of
         Lua.OK -> Lua.callFunc "onDraw" ()
@@ -93,12 +102,13 @@ reload path = do
   fs <- liftIO $ readFile (T.unpack path)
   path @@! SetExpr fs
 
-loadLib :: Lua.Lua ()
-loadLib = Lua.requirehs "minilight" $ do
+loadLib :: LuaComponentState -> Lua.Lua ()
+loadLib state = Lua.requirehs "minilight" $ do
   Lua.create
-  Lua.addfunction "picture"   minilight_picture
-  Lua.addfunction "translate" minilight_translate
-  Lua.addfunction "text"      minilight_text
+  Lua.addfunction "picture"      minilight_picture
+  Lua.addfunction "translate"    minilight_translate
+  Lua.addfunction "text"         minilight_text
+  Lua.addfunction "useMouseMove" minilight_useMouseMove
  where
   minilight_picture :: BS.ByteString -> Lua.Lua FigureDSL
   minilight_picture cs = return $ Picture $ T.unpack $ TLE.decodeUtf8 cs
@@ -114,3 +124,8 @@ loadLib = Lua.requirehs "minilight" $ do
               (fromIntegral a)
     )
     (TLE.decodeUtf8 cs)
+
+  minilight_useMouseMove :: Lua.Lua (Int, Int)
+  minilight_useMouseMove = do
+    Vect.V2 x y <- liftIO $ peek $ mousePosition state
+    return (x, y)
