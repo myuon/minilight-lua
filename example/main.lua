@@ -1,6 +1,8 @@
 local minilight = require("minilight")
 
 function onDraw()
+    print("[LUA OUTPUT] hello")
+
     return {
         minilight.translate(50, 50, minilight.picture("example/example.png")),
         minilight.translate(100, 100, minilight.text("こんにちは世界",

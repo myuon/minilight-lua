@@ -10,6 +10,7 @@ import Data.IORef
 import Data.Maybe
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TLE
+import Data.UnixTime
 import qualified Foreign.Lua as Lua
 import Foreign.C.String
 import Foreign.Ptr
@@ -27,7 +28,8 @@ data LuaComponentState = LuaComponentState {
 data LuaComponent = LuaComponent {
   expr :: String,
   state :: LuaComponentState,
-  counter :: Int
+  counter :: Int,
+  updatedAt :: UnixTime
 }
 
 data LuaComponentEvent
@@ -43,8 +45,9 @@ instance ComponentUnit LuaComponent where
     lift $ Basic.emitBasicSignal ev (Basic.Config { Basic.size = V2 640 480, Basic.position = V2 0 0, Basic.visible = True })
 
     case asSignal ev of
-      Just (SetExpr fs) ->
-        modify $ \qc -> qc { expr = fs, counter = counter qc + 1 }
+      Just (SetExpr fs) -> do
+        t <- liftIO getUnixTime
+        modify $ \qc -> qc { expr = fs, counter = counter qc + 1, updatedAt = t }
       _ -> return ()
 
     case asSignal ev of
@@ -52,13 +55,14 @@ instance ComponentUnit LuaComponent where
         modify $ \qc -> qc { state = (state qc) { mousePosition = p }, counter = counter qc + 1 }
       _ -> return ()
 
-  useCache c1 c2 = counter c1 == counter c2
+  useCache c1 c2 = updatedAt c1 == updatedAt c2
 
 newLuaComponent :: LuaComponent
 newLuaComponent = LuaComponent
-  { expr    = ""
-  , state   = LuaComponentState {mousePosition = 0}
-  , counter = 0
+  { expr      = ""
+  , state     = LuaComponentState {mousePosition = 0}
+  , counter   = 0
+  , updatedAt = UnixTime 0 0
   }
 
 evalLuaComponent
