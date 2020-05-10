@@ -1,5 +1,7 @@
 # minilight-lua
 
+[![Hackage](http://img.shields.io/hackage/v/minilight-lua.svg)](https://hackage.haskell.org/package/minilight-lua) [![MIT license](http://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 A binding library of [minilight](https://github.com/myuon/minilight) for Lua language.
 
 *NB: This package is in the very early stage.*

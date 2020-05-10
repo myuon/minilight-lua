@@ -15,7 +15,9 @@ author:              myuon
 maintainer:          ioi.joi.koi.loi@gmail.com
 -- copyright:
 category:            Graphics
-extra-source-files:  CHANGELOG.md
+extra-source-files:
+  CHANGELOG.md
+  README.md
 
 source-repository head
   type:     git
