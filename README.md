@@ -1,6 +1,6 @@
 # minilight-lua
 
-A binding library of [minilight](https://github.com/myuon/minilight) of lua language.
+A binding library of [minilight](https://github.com/myuon/minilight) for Lua language.
 
 *NB: This package is in the very early stage.*
 
