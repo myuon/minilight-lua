@@ -62,6 +62,8 @@ instance ComponentUnit LuaComponent where
 
   useCache c1 c2 = updatedAt c1 == updatedAt c2 && counter c1 == counter c2
 
+  beforeClearCache _ = mapM_ freeFigure
+
 newLuaComponent :: IO LuaComponent
 newLuaComponent = do
   p <- malloc
