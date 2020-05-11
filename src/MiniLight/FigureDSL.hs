@@ -3,13 +3,14 @@ module MiniLight.FigureDSL where
 
 import Control.Monad
 import qualified Data.Config.Font as Font
+import qualified Data.Cache as Cache
 import qualified Data.Text as T
 import Data.Word (Word8)
 import MiniLight
 import qualified SDL
 import qualified SDL.Vect as Vect
+import SDL.Font (Font)
 import Foreign.Lua
-import qualified MiniLight.FigureCache as FC
 
 data FigureDSL
   = Empty
@@ -25,15 +26,24 @@ instance Peekable FigureDSL where
 instance Pushable FigureDSL where
   push = push . show
 
-construct :: FC.FigureCache -> FigureDSL -> MiniLight (Maybe Figure)
-construct fc dsl = case dsl of
-  Empty           -> return $ Just emptyFigure
-  Translate p fig -> fmap (fmap (translate p)) $ construct fc fig
-  Clip p q fig ->
-    fmap (fmap (clip (SDL.Rectangle (Vect.P p) q))) $ construct fc fig
-  Picture path ->
-    fmap Just $ FC.getOrCreate (picture . T.unpack) (T.pack path) fc
-  Text color t -> do
-    font <- Font.loadFontFrom
-      $ Font.Config (FontDescriptor "IPAGothic" (FontStyle False False)) 24 0
-    fmap Just $ text font color t
+construct
+  :: Cache.CacheRegistry Font
+  -> Cache.CacheRegistry Figure
+  -> FigureDSL
+  -> MiniLight (Maybe Figure)
+construct tc fc = go
+ where
+  go dsl = case dsl of
+    Empty           -> return $ Just emptyFigure
+    Translate p fig -> fmap (fmap (translate p)) $ go fig
+    Clip p q fig    -> fmap (fmap (clip (SDL.Rectangle (Vect.P p) q))) $ go fig
+    Picture path ->
+      fmap Just $ Cache.getOrCreate (picture . T.unpack) (T.pack path) fc
+    Text color t -> do
+      font <- Cache.getOrCreate
+        ( \name -> Font.loadFontFrom
+          $ Font.Config (FontDescriptor name (FontStyle False False)) 24 0
+        )
+        "IPAGothic"
+        tc
+      fmap Just $ text font color t

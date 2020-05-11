@@ -26,7 +26,6 @@ source-repository head
 library
   exposed-modules:
     Data.Cache
-    MiniLight.FigureCache
     MiniLight.Lua
     MiniLight.FigureDSL
   -- other-modules:
@@ -41,6 +40,7 @@ library
     minilight >= 0.5.0,
     mtl >= 2.2,
     sdl2 >= 2.4 && < 2.5,
+    sdl2-ttf,
     text >= 1.2,
     unix-time >= 0.4,
   hs-source-dirs:      src

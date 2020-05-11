@@ -5,6 +5,7 @@ import qualified Control.Monad.Caster as Caster
 import Control.Monad.Catch
 import Control.Monad.State hiding (state)
 import qualified Data.ByteString as BS
+import qualified Data.Cache as Cache
 import qualified Data.Component.Basic as Basic
 import Data.IORef
 import Data.Maybe
@@ -15,13 +16,15 @@ import qualified Foreign.Lua as Lua
 import Linear
 import MiniLight
 import MiniLight.FigureDSL
-import qualified MiniLight.FigureCache as FC
 import qualified SDL
 import qualified SDL.Vect as Vect
+import SDL.Font (Font)
 
 data LuaComponentState = LuaComponentState {
   mousePosition :: IORef (V2 Int),
-  cache :: FC.FigureCache
+  figCache :: Cache.CacheRegistry Figure,
+  ttfCache :: Cache.CacheRegistry Font,
+  luaState :: Lua.State
 }
 
 data LuaComponent = LuaComponent {
@@ -46,7 +49,7 @@ instance ComponentUnit LuaComponent where
     case asSignal ev of
       Just (SetExpr fs) -> do
         t <- liftIO getUnixTime
-        modify $ \qc -> qc { expr = fs, updatedAt = t }
+        modify' $ \qc -> qc { expr = fs, updatedAt = t }
       _ -> return ()
 
     case asSignal ev of
@@ -54,19 +57,32 @@ instance ComponentUnit LuaComponent where
         st <- get
         liftIO $ writeIORef (mousePosition $ state st) p
 
-        modify $ \qc -> qc { counter = counter qc + 1 }
+        modify' $ \qc -> qc { counter = counter qc + 1 }
       _ -> return ()
 
   useCache c1 c2 = updatedAt c1 == updatedAt c2 && counter c1 == counter c2
 
 newLuaComponent :: IO LuaComponent
 newLuaComponent = do
-  p  <- newIORef 0
-  fc <- FC.new
+  p   <- newIORef 0
+  fc  <- Cache.new
+  tc  <- Cache.new
+  lua <- Lua.newstate
+
+  let state = LuaComponentState
+        { mousePosition = p
+        , figCache      = fc
+        , ttfCache      = tc
+        , luaState      = lua
+        }
+
+  Lua.runWith lua $ do
+    Lua.openlibs
+    loadLib state
 
   return $ LuaComponent
     { expr      = ""
-    , state     = LuaComponentState {mousePosition = p, cache = fc}
+    , state     = state
     , updatedAt = UnixTime 0 0
     , counter   = 0
     }
@@ -79,18 +95,18 @@ evalLuaComponent
 evalLuaComponent content state
   | content == "" = return []
   | otherwise = do
-    result <- liftIO $ Lua.run $ Lua.try $ do
-      Lua.openlibs
-      loadLib state
+    let lua = luaState state
+    result <- liftIO $ Lua.runWith lua $ Lua.try $ do
       st <- Lua.dostring $ TLE.encodeUtf8 $ T.pack content
       case st of
         Lua.OK -> Lua.callFunc "onDraw" ()
         _      -> Lua.throwException $ "Invalid status: " ++ show st
 
     case result of
-      Left err -> Caster.err err >> return []
-      Right rs ->
-        liftMiniLight $ fmap catMaybes $ mapM (construct (cache state)) rs
+      Left  err -> Caster.err err >> return []
+      Right rs  -> liftMiniLight $ fmap catMaybes $ mapM
+        (construct (ttfCache state) (figCache state))
+        rs
 
 reload
   :: (HasLoaderEnv env, HasLightEnv env, HasLoopEnv env, MonadIO m, MonadMask m)
