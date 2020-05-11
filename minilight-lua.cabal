@@ -25,6 +25,8 @@ source-repository head
 
 library
   exposed-modules:
+    Data.Cache
+    MiniLight.FigureCache
     MiniLight.Lua
     MiniLight.FigureDSL
   -- other-modules:
@@ -32,6 +34,7 @@ library
   build-depends:
     base ^>=4.13.0.0,
     bytestring >= 0.10,
+    containers,
     exceptions >= 0.10,
     hslua >= 1.1,
     linear >= 1.20,
