@@ -12,11 +12,6 @@ import qualified Data.Text as T
 import qualified Data.Text.Encoding as TLE
 import Data.UnixTime
 import qualified Foreign.Lua as Lua
-import Foreign.C.String
-import Foreign.Ptr
-import Foreign.Marshal.Alloc
-import Foreign.Storable
-import GHC.Generics (Generic)
 import Linear
 import MiniLight
 import MiniLight.FigureDSL
@@ -25,7 +20,7 @@ import qualified SDL
 import qualified SDL.Vect as Vect
 
 data LuaComponentState = LuaComponentState {
-  mousePosition :: Ptr (V2 Int),
+  mousePosition :: IORef (V2 Int),
   cache :: FC.FigureCache
 }
 
@@ -57,7 +52,7 @@ instance ComponentUnit LuaComponent where
     case asSignal ev of
       Just (Basic.MouseOver p) -> do
         st <- get
-        liftIO $ poke (mousePosition $ state st) p
+        liftIO $ writeIORef (mousePosition $ state st) p
 
         modify $ \qc -> qc { counter = counter qc + 1 }
       _ -> return ()
@@ -66,9 +61,7 @@ instance ComponentUnit LuaComponent where
 
 newLuaComponent :: IO LuaComponent
 newLuaComponent = do
-  p <- malloc
-  poke p 0
-
+  p  <- newIORef 0
   fc <- FC.new
 
   return $ LuaComponent
@@ -132,5 +125,5 @@ loadLib state = Lua.requirehs "minilight" $ do
 
   minilight_useMouseMove :: Lua.Lua (Int, Int)
   minilight_useMouseMove = do
-    Vect.V2 x y <- liftIO $ peek $ mousePosition state
+    Vect.V2 x y <- liftIO $ readIORef $ mousePosition state
     return (x, y)
