@@ -11,10 +11,17 @@ newtype FigureCache = FigureCache { getFigureCache :: Cache.CacheRegistry Figure
 new :: MonadIO m => m FigureCache
 new = fmap FigureCache Cache.new
 
+size :: MonadIO m => FigureCache -> m Int
+size (FigureCache cache) = Cache.size cache
+
 getOrCreate
   :: MonadIO m => (T.Text -> m Figure) -> T.Text -> FigureCache -> m Figure
-getOrCreate alloc key (FigureCache cache) =
-  maybe (alloc key) return =<< Cache.lookup key cache
+getOrCreate alloc key (FigureCache cache) = do
+  result <- Cache.lookup key cache
+  (\f -> maybe f return result) $ do
+    fig <- alloc key
+    Cache.register key fig cache
+    return fig
 
 clearAll :: MonadIO m => FigureCache -> m ()
 clearAll (FigureCache cache) = do

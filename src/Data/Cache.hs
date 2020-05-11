@@ -10,6 +10,9 @@ newtype CacheRegistry v = CacheRegistry { getCacheRegistry :: IORef (M.Map T.Tex
 new :: MonadIO m => m (CacheRegistry v)
 new = liftIO $ fmap CacheRegistry $ newIORef M.empty
 
+size :: MonadIO m => CacheRegistry v -> m Int
+size (CacheRegistry ref) = liftIO $ fmap M.size $ readIORef ref
+
 register :: MonadIO m => T.Text -> v -> CacheRegistry v -> m ()
 register t v cache =
   liftIO $ modifyIORef' (getCacheRegistry cache) $ M.insert t v

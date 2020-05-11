@@ -20,11 +20,13 @@ import GHC.Generics (Generic)
 import Linear
 import MiniLight
 import MiniLight.FigureDSL
+import qualified MiniLight.FigureCache as FC
 import qualified SDL
 import qualified SDL.Vect as Vect
 
 data LuaComponentState = LuaComponentState {
-  mousePosition :: Ptr (V2 Int)
+  mousePosition :: Ptr (V2 Int),
+  cache :: FC.FigureCache
 }
 
 data LuaComponent = LuaComponent {
@@ -62,16 +64,16 @@ instance ComponentUnit LuaComponent where
 
   useCache c1 c2 = updatedAt c1 == updatedAt c2 && counter c1 == counter c2
 
-  beforeClearCache _ = mapM_ freeFigure
-
 newLuaComponent :: IO LuaComponent
 newLuaComponent = do
   p <- malloc
   poke p 0
 
+  fc <- FC.new
+
   return $ LuaComponent
     { expr      = ""
-    , state     = LuaComponentState {mousePosition = p}
+    , state     = LuaComponentState {mousePosition = p, cache = fc}
     , updatedAt = UnixTime 0 0
     , counter   = 0
     }
@@ -93,8 +95,9 @@ evalLuaComponent content state
         _      -> Lua.throwException $ "Invalid status: " ++ show st
 
     case result of
-      Left  err -> Caster.err err >> return []
-      Right rs  -> liftMiniLight $ fmap catMaybes $ mapM construct rs
+      Left err -> Caster.err err >> return []
+      Right rs ->
+        liftMiniLight $ fmap catMaybes $ mapM (construct (cache state)) rs
 
 reload
   :: (HasLoaderEnv env, HasLightEnv env, HasLoopEnv env, MonadIO m, MonadMask m)
