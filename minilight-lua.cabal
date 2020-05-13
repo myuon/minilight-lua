@@ -32,6 +32,8 @@ library
     MiniLight.Lua
     MiniLight.FigureDSL
     Paths_minilight_lua
+  autogen-modules:
+    Paths_minilight_lua
   -- other-modules:
   -- other-extensions:
   build-depends:
