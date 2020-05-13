@@ -22,6 +22,8 @@ import SDL.Font (Font)
 
 data LuaComponentState = LuaComponentState {
   mousePosition :: IORef (V2 Int),
+  mousePressed :: IORef Bool,
+  mouseReleased :: IORef Bool,
   figCache :: Cache.CacheRegistry Figure,
   ttfCache :: Cache.CacheRegistry Font,
   luaState :: Lua.State
@@ -44,6 +46,10 @@ instance ComponentUnit LuaComponent where
   figures comp = evalLuaComponent (expr comp) (state comp)
 
   onSignal ev = execStateT $ do
+    get >>= \qc -> liftIO $ do
+      writeIORef (mousePressed $ state qc) False
+      writeIORef (mouseReleased $ state qc) False
+    modify' $ \qc -> qc { counter = counter qc + 1 }
     lift $ Basic.emitBasicSignal ev (Basic.Config { Basic.size = V2 640 480, Basic.position = V2 0 0, Basic.visible = True })
 
     case asSignal ev of
@@ -56,8 +62,12 @@ instance ComponentUnit LuaComponent where
       Just (Basic.MouseOver p) -> do
         st <- get
         liftIO $ writeIORef (mousePosition $ state st) p
-
-        modify' $ \qc -> qc { counter = counter qc + 1 }
+      Just (Basic.MousePressed _) -> do
+        st <- get
+        liftIO $ writeIORef (mousePressed $ state st) True
+      Just (Basic.MouseReleased _) -> do
+        st <- get
+        liftIO $ writeIORef (mouseReleased $ state st) True
       _ -> return ()
 
   useCache c1 c2 = updatedAt c1 == updatedAt c2 && counter c1 == counter c2
@@ -68,12 +78,16 @@ newLuaComponent = do
   fc  <- Cache.new
   tc  <- Cache.new
   lua <- Lua.newstate
+  mp  <- newIORef False
+  mr  <- newIORef False
 
   let state = LuaComponentState
         { mousePosition = p
         , figCache      = fc
         , ttfCache      = tc
         , luaState      = lua
+        , mousePressed  = mp
+        , mouseReleased = mr
         }
 
   Lua.runWith lua $ do
@@ -119,10 +133,12 @@ reload path = do
 loadLib :: LuaComponentState -> Lua.Lua ()
 loadLib state = Lua.requirehs "minilight" $ do
   Lua.create
-  Lua.addfunction "picture"      minilight_picture
-  Lua.addfunction "translate"    minilight_translate
-  Lua.addfunction "text"         minilight_text
-  Lua.addfunction "useMouseMove" minilight_useMouseMove
+  Lua.addfunction "picture"          minilight_picture
+  Lua.addfunction "translate"        minilight_translate
+  Lua.addfunction "text"             minilight_text
+  Lua.addfunction "useMouseMove"     minilight_useMouseMove
+  Lua.addfunction "useMousePressed"  minilight_useMousePressed
+  Lua.addfunction "useMouseReleased" minilight_useMouseReleased
  where
   minilight_picture :: BS.ByteString -> Lua.Lua FigureDSL
   minilight_picture cs = return $ Picture $ T.unpack $ TLE.decodeUtf8 cs
@@ -143,3 +159,9 @@ loadLib state = Lua.requirehs "minilight" $ do
   minilight_useMouseMove = do
     Vect.V2 x y <- liftIO $ readIORef $ mousePosition state
     return (x, y)
+
+  minilight_useMousePressed :: Lua.Lua Bool
+  minilight_useMousePressed = liftIO $ readIORef $ mousePressed state
+
+  minilight_useMouseReleased :: Lua.Lua Bool
+  minilight_useMouseReleased = liftIO $ readIORef $ mouseReleased state
