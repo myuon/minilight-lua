@@ -9,6 +9,7 @@ import qualified Data.Cache as Cache
 import qualified Data.Component.Basic as Basic
 import Data.IORef
 import Data.Maybe
+import qualified Data.Map as M
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TLE
 import Data.UnixTime
@@ -30,7 +31,13 @@ data LuaComponentState = LuaComponentState {
   mouseReleased :: IORef Bool,
   figCache :: Cache.CacheRegistry Figure,
   ttfCache :: Cache.CacheRegistry Font,
-  luaState :: Lua.State
+  luaState :: Lua.State,
+  numberStates :: IORef (M.Map String (Ptr Double)),
+  boolStates :: IORef (M.Map String (Ptr Bool)),
+  stringStates :: IORef (M.Map String (Ptr CString)),
+
+  -- Luaでの更新判定用
+  updatedAtRef :: IORef UnixTime
 }
 
 data LuaComponent = LuaComponent {
@@ -54,12 +61,16 @@ instance ComponentUnit LuaComponent where
       writeIORef (mousePressed $ state qc) False
       writeIORef (mouseReleased $ state qc) False
     modify' $ \qc -> qc { counter = counter qc + 1 }
+
     lift $ Basic.emitBasicSignal ev (Basic.Config { Basic.size = V2 640 480, Basic.position = V2 0 0, Basic.visible = True })
 
     case asSignal ev of
       Just (SetExpr fs) -> do
         t <- liftIO getUnixTime
         modify' $ \qc -> qc { expr = fs, updatedAt = t }
+
+        qc <- get
+        liftIO $ writeIORef (updatedAtRef $ state qc) $ updatedAt qc
       _ -> return ()
 
     case asSignal ev of
@@ -84,6 +95,10 @@ newLuaComponent = do
   lua <- Lua.newstate
   mp  <- newIORef False
   mr  <- newIORef False
+  ns  <- newIORef M.empty
+  bs  <- newIORef M.empty
+  ss  <- newIORef M.empty
+  u   <- newIORef $ UnixTime 0 0
 
   let state = LuaComponentState
         { mousePosition = p
@@ -92,6 +107,10 @@ newLuaComponent = do
         , luaState      = lua
         , mousePressed  = mp
         , mouseReleased = mr
+        , numberStates  = ns
+        , boolStates    = bs
+        , stringStates  = ss
+        , updatedAtRef  = u
         }
 
   Lua.runWith lua $ do
@@ -179,11 +198,18 @@ loadLib state = Lua.requirehs "minilight" $ do
   minilight_useMouseReleased :: Lua.Lua Bool
   minilight_useMouseReleased = liftIO $ readIORef $ mouseReleased state
 
-  minilight_newStateBool :: Bool -> Lua.Lua (Ptr Bool)
-  minilight_newStateBool def = liftIO $ do
-    p <- malloc
-    poke p def
-    return p
+  minilight_newStateBool :: Int -> Bool -> Lua.Lua (Ptr Bool)
+  minilight_newStateBool index def = liftIO $ do
+    m   <- readIORef $ boolStates state
+    uat <- readIORef $ updatedAtRef state
+    let key = show uat ++ "-" ++ show index
+    case m M.!? key of
+      Just k  -> return k
+      Nothing -> do
+        p <- malloc
+        poke p def
+        writeIORef (boolStates state) $ M.insert key p m
+        return p
 
   minilight_readStateBool :: Ptr Bool -> Lua.Lua Bool
   minilight_readStateBool = liftIO . peek
@@ -191,12 +217,19 @@ loadLib state = Lua.requirehs "minilight" $ do
   minilight_writeStateBool :: Ptr Bool -> Bool -> Lua.Lua ()
   minilight_writeStateBool p v = liftIO $ poke p v
 
-  minilight_newStateString :: String -> Lua.Lua (Ptr CString)
-  minilight_newStateString def = liftIO $ do
-    p  <- malloc
-    cs <- newCString def
-    poke p cs
-    return p
+  minilight_newStateString :: Int -> String -> Lua.Lua (Ptr CString)
+  minilight_newStateString index def = liftIO $ do
+    m   <- readIORef $ stringStates state
+    uat <- readIORef $ updatedAtRef state
+    let key = show uat ++ "-" ++ show index
+    case m M.!? key of
+      Just k  -> return k
+      Nothing -> do
+        p  <- malloc
+        cs <- newCString def
+        poke p cs
+        writeIORef (stringStates state) $ M.insert key p m
+        return p
 
   minilight_readStateString :: Ptr CString -> Lua.Lua String
   minilight_readStateString p = liftIO $ peekCString =<< peek p
@@ -207,11 +240,18 @@ loadLib state = Lua.requirehs "minilight" $ do
     cs <- newCString v
     poke p cs
 
-  minilight_newStateNumber :: Lua.Number -> Lua.Lua (Ptr Double)
-  minilight_newStateNumber (Lua.Number def) = liftIO $ do
-    p <- malloc
-    poke p def
-    return p
+  minilight_newStateNumber :: Int -> Lua.Number -> Lua.Lua (Ptr Double)
+  minilight_newStateNumber index (Lua.Number def) = liftIO $ do
+    m   <- readIORef $ numberStates state
+    uat <- readIORef $ updatedAtRef state
+    let key = show uat ++ "-" ++ show index
+    case m M.!? key of
+      Just k  -> return k
+      Nothing -> do
+        p <- malloc
+        poke p def
+        writeIORef (numberStates state) $ M.insert key p m
+        return p
 
   minilight_readStateNumber :: Ptr Double -> Lua.Lua Lua.Number
   minilight_readStateNumber p = liftIO $ fmap Lua.Number $ peek p
