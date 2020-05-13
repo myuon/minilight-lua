@@ -13,6 +13,10 @@ import qualified Data.Text as T
 import qualified Data.Text.Encoding as TLE
 import Data.UnixTime
 import qualified Foreign.Lua as Lua
+import Foreign.Ptr
+import Foreign.C.String
+import Foreign.Marshal.Alloc
+import Foreign.Storable
 import Linear
 import MiniLight
 import MiniLight.FigureDSL
@@ -133,12 +137,21 @@ reload path = do
 loadLib :: LuaComponentState -> Lua.Lua ()
 loadLib state = Lua.requirehs "minilight" $ do
   Lua.create
-  Lua.addfunction "picture"          minilight_picture
-  Lua.addfunction "translate"        minilight_translate
-  Lua.addfunction "text"             minilight_text
-  Lua.addfunction "useMouseMove"     minilight_useMouseMove
-  Lua.addfunction "useMousePressed"  minilight_useMousePressed
-  Lua.addfunction "useMouseReleased" minilight_useMouseReleased
+  Lua.addfunction "picture"           minilight_picture
+  Lua.addfunction "translate"         minilight_translate
+  Lua.addfunction "text"              minilight_text
+  Lua.addfunction "useMouseMove"      minilight_useMouseMove
+  Lua.addfunction "useMousePressed"   minilight_useMousePressed
+  Lua.addfunction "useMouseReleased"  minilight_useMouseReleased
+  Lua.addfunction "newState_bool"     minilight_newStateBool
+  Lua.addfunction "readState_bool"    minilight_readStateBool
+  Lua.addfunction "writeState_bool"   minilight_writeStateBool
+  Lua.addfunction "newState_string"   minilight_newStateString
+  Lua.addfunction "readState_string"  minilight_readStateString
+  Lua.addfunction "writeState_string" minilight_writeStateString
+  Lua.addfunction "newState_number"   minilight_newStateNumber
+  Lua.addfunction "readState_number"  minilight_readStateNumber
+  Lua.addfunction "writeState_number" minilight_writeStateNumber
  where
   minilight_picture :: BS.ByteString -> Lua.Lua FigureDSL
   minilight_picture cs = return $ Picture $ T.unpack $ TLE.decodeUtf8 cs
@@ -165,3 +178,43 @@ loadLib state = Lua.requirehs "minilight" $ do
 
   minilight_useMouseReleased :: Lua.Lua Bool
   minilight_useMouseReleased = liftIO $ readIORef $ mouseReleased state
+
+  minilight_newStateBool :: Bool -> Lua.Lua (Ptr Bool)
+  minilight_newStateBool def = liftIO $ do
+    p <- malloc
+    poke p def
+    return p
+
+  minilight_readStateBool :: Ptr Bool -> Lua.Lua Bool
+  minilight_readStateBool = liftIO . peek
+
+  minilight_writeStateBool :: Ptr Bool -> Bool -> Lua.Lua ()
+  minilight_writeStateBool p v = liftIO $ poke p v
+
+  minilight_newStateString :: String -> Lua.Lua (Ptr CString)
+  minilight_newStateString def = liftIO $ do
+    p  <- malloc
+    cs <- newCString def
+    poke p cs
+    return p
+
+  minilight_readStateString :: Ptr CString -> Lua.Lua String
+  minilight_readStateString p = liftIO $ peekCString =<< peek p
+
+  minilight_writeStateString :: Ptr CString -> String -> Lua.Lua ()
+  minilight_writeStateString p v = liftIO $ do
+    peek p >>= free
+    cs <- newCString v
+    poke p cs
+
+  minilight_newStateNumber :: Lua.Number -> Lua.Lua (Ptr Double)
+  minilight_newStateNumber (Lua.Number def) = liftIO $ do
+    p <- malloc
+    poke p def
+    return p
+
+  minilight_readStateNumber :: Ptr Double -> Lua.Lua Lua.Number
+  minilight_readStateNumber p = liftIO $ fmap Lua.Number $ peek p
+
+  minilight_writeStateNumber :: Ptr Double -> Lua.Number -> Lua.Lua ()
+  minilight_writeStateNumber p (Lua.Number v) = liftIO $ poke p v
