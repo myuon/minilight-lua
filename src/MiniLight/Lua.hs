@@ -24,6 +24,7 @@ import MiniLight.FigureDSL
 import qualified SDL
 import qualified SDL.Vect as Vect
 import SDL.Font (Font)
+import Paths_minilight_lua
 
 data LuaComponentState = LuaComponentState {
   mousePosition :: IORef (V2 Int),
@@ -154,23 +155,31 @@ reload path = do
   path @@! SetExpr fs
 
 loadLib :: LuaComponentState -> Lua.Lua ()
-loadLib state = Lua.requirehs "minilight" $ do
-  Lua.create
-  Lua.addfunction "picture"           minilight_picture
-  Lua.addfunction "translate"         minilight_translate
-  Lua.addfunction "text"              minilight_text
-  Lua.addfunction "useMouseMove"      minilight_useMouseMove
-  Lua.addfunction "useMousePressed"   minilight_useMousePressed
-  Lua.addfunction "useMouseReleased"  minilight_useMouseReleased
-  Lua.addfunction "newState_bool"     minilight_newStateBool
-  Lua.addfunction "readState_bool"    minilight_readStateBool
-  Lua.addfunction "writeState_bool"   minilight_writeStateBool
-  Lua.addfunction "newState_string"   minilight_newStateString
-  Lua.addfunction "readState_string"  minilight_readStateString
-  Lua.addfunction "writeState_string" minilight_writeStateString
-  Lua.addfunction "newState_number"   minilight_newStateNumber
-  Lua.addfunction "readState_number"  minilight_readStateNumber
-  Lua.addfunction "writeState_number" minilight_writeStateNumber
+loadLib state = do
+  Lua.requirehs "minilight_raw" $ do
+    Lua.create
+    Lua.addfunction "picture"           minilight_picture
+    Lua.addfunction "translate"         minilight_translate
+    Lua.addfunction "text"              minilight_text
+    Lua.addfunction "useMouseMove"      minilight_useMouseMove
+    Lua.addfunction "useMousePressed"   minilight_useMousePressed
+    Lua.addfunction "useMouseReleased"  minilight_useMouseReleased
+    Lua.addfunction "newState_bool"     minilight_newStateBool
+    Lua.addfunction "readState_bool"    minilight_readStateBool
+    Lua.addfunction "writeState_bool"   minilight_writeStateBool
+    Lua.addfunction "newState_string"   minilight_newStateString
+    Lua.addfunction "readState_string"  minilight_readStateString
+    Lua.addfunction "writeState_string" minilight_writeStateString
+    Lua.addfunction "newState_number"   minilight_newStateNumber
+    Lua.addfunction "readState_number"  minilight_readStateNumber
+    Lua.addfunction "writeState_number" minilight_writeStateNumber
+
+  Lua.requirehs "minilight" $ do
+    lib <- liftIO $ getDataFileName "src/lib.lua"
+    st  <- Lua.dofile lib
+    case st of
+      Lua.OK -> return ()
+      _      -> Lua.throwException $ "Invalid status (lib): " ++ show st
  where
   minilight_picture :: BS.ByteString -> Lua.Lua FigureDSL
   minilight_picture cs = return $ Picture $ T.unpack $ TLE.decodeUtf8 cs

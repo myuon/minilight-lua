@@ -1,46 +1,11 @@
 local minilight = require("minilight")
-local index = 0
-
-function useState(def)
-    index = index + 1
-
-    if (type(def) == "number") then
-        local ref = minilight.newState_number(index, def)
-
-        return {
-            value = minilight.readState_number(ref),
-            write = function(v)
-                return minilight.writeState_number(ref, v)
-            end
-        }
-    elseif (type(def) == "string") then
-        local ref = minilight.newState_string(index, def)
-
-        return {
-            value = minilight.readState_string(ref),
-            write = function(v)
-                return minilight.writeState_string(ref, v)
-            end
-        }
-    elseif (type(def) == "bool") then
-        local ref = minilight.newState_bool(index, def)
-
-        return {
-            value = minilight.readState_bool(ref),
-            write = function(v)
-                return minilight.writeState_bool(ref, v)
-            end
-        }
-    else
-        error("Type(" .. type(def) .. ") is not supported!")
-    end
-end
+minilight.init()
 
 function onDraw()
     print("[LUA OUTPUT] hello")
 
     local p = minilight.useMouseMove()
-    local clicked = useState(0)
+    local clicked = minilight.useState(0)
 
     local pressed = minilight.useMousePressed()
     if (pressed) then clicked.write(clicked.value + 1) end

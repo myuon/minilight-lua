@@ -19,6 +19,9 @@ extra-source-files:
   CHANGELOG.md
   README.md
 
+data-files:
+  src/lib.lua
+
 source-repository head
   type:     git
   location: https://github.com/myuon/minilight-lua.git
@@ -28,6 +31,7 @@ library
     Data.Cache
     MiniLight.Lua
     MiniLight.FigureDSL
+    Paths_minilight_lua
   -- other-modules:
   -- other-extensions:
   build-depends:
