@@ -14,6 +14,7 @@ import qualified Data.Text as T
 import qualified Data.Text.Encoding as TLE
 import Data.UnixTime
 import qualified Foreign.Lua as Lua
+import qualified Foreign.Lua.Types.Peekable as Lua
 import Foreign.Ptr
 import Foreign.C.String
 import Foreign.Marshal.Alloc
@@ -26,6 +27,14 @@ import qualified SDL.Vect as Vect
 import SDL.Font (Font)
 import Paths_minilight_lua
 
+newtype LuaTable = LuaTable (Ptr ())
+
+instance Lua.Peekable LuaTable where
+  peek = Lua.reportValueOnFailure "table" (fmap (Just . LuaTable) . Lua.topointer)
+
+instance Lua.Pushable LuaTable where
+  push (LuaTable p) = Lua.push p
+
 data LuaComponentState = LuaComponentState {
   mousePosition :: IORef (V2 Int),
   mousePressed :: IORef Bool,
@@ -36,6 +45,7 @@ data LuaComponentState = LuaComponentState {
   numberStates :: IORef (M.Map String (Ptr Double)),
   boolStates :: IORef (M.Map String (Ptr Bool)),
   stringStates :: IORef (M.Map String (Ptr CString)),
+  tableStates :: IORef (M.Map String (Ptr (Ptr ()))),
 
   -- Luaでの更新判定用
   updatedAtRef :: IORef UnixTime
@@ -99,6 +109,7 @@ newLuaComponent = do
   ns  <- newIORef M.empty
   bs  <- newIORef M.empty
   ss  <- newIORef M.empty
+  ts  <- newIORef M.empty
   u   <- newIORef $ UnixTime 0 0
 
   let state = LuaComponentState
@@ -111,6 +122,7 @@ newLuaComponent = do
         , numberStates  = ns
         , boolStates    = bs
         , stringStates  = ss
+        , tableStates   = ts
         , updatedAtRef  = u
         }
 
@@ -173,6 +185,9 @@ loadLib state = do
     Lua.addfunction "newState_number"   minilight_newStateNumber
     Lua.addfunction "readState_number"  minilight_readStateNumber
     Lua.addfunction "writeState_number" minilight_writeStateNumber
+    Lua.addfunction "newState_table"    minilight_newStateTable
+    Lua.addfunction "readState_table"   minilight_readStateTable
+    Lua.addfunction "writeState_table"  minilight_writeStateTable
 
   Lua.requirehs "minilight" $ do
     lib <- liftIO $ getDataFileName "src/lib.lua"
@@ -267,3 +282,24 @@ loadLib state = do
 
   minilight_writeStateNumber :: Ptr Double -> Lua.Number -> Lua.Lua ()
   minilight_writeStateNumber p (Lua.Number v) = liftIO $ poke p v
+
+  minilight_newStateTable :: Int -> LuaTable -> Lua.Lua (Ptr (Ptr ()))
+  minilight_newStateTable index (LuaTable def) = liftIO $ do
+    m   <- readIORef $ tableStates state
+    uat <- readIORef $ updatedAtRef state
+    let key = show uat ++ "-" ++ show index
+    case m M.!? key of
+      Just k  -> return k
+      Nothing -> do
+        p <- malloc
+        poke p def
+        writeIORef (tableStates state) $ M.insert key p m
+        return p
+
+  minilight_readStateTable :: Ptr (Ptr ()) -> Lua.Lua LuaTable
+  minilight_readStateTable p = liftIO $ fmap LuaTable $ peek p
+
+  minilight_writeStateTable :: Ptr (Ptr ()) -> LuaTable -> Lua.Lua ()
+  minilight_writeStateTable p (LuaTable val) = liftIO $ do
+    peek p >>= free
+    poke p val

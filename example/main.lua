@@ -5,10 +5,16 @@ function onDraw()
     print("[LUA OUTPUT] hello")
 
     local p = minilight.useMouseMove()
+    local history = minilight.useState({})
     local clicked = minilight.useState(0)
 
     local pressed = minilight.useMousePressed()
-    if (pressed) then clicked.write(clicked.value + 1) end
+    if (pressed) then
+        clicked.write(clicked.value + 1)
+        table.insert(history.value, clicked.value)
+
+        print(history.value[#history.value])
+    end
 
     return {
         minilight.translate(50, 50, minilight.picture("example/example.png")),

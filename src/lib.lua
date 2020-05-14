@@ -34,6 +34,15 @@ function mod.useState(def)
                 return minilight_raw.writeState_bool(ref, v)
             end
         }
+    elseif (type(def) == "table") then
+        local ref = minilight_raw.newState_table(index, def)
+
+        return {
+            value = minilight_raw.readState_table(ref),
+            write = function(v)
+                return minilight_raw.writeState_table(ref, v)
+            end
+        }
     else
         error("Type(" .. type(def) .. ") is not supported!")
     end
