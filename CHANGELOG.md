@@ -1,5 +1,9 @@
 # Revision history for minilight-lua
 
+## 0.2.1.0 -- 2020-05-16
+
+* Support table type for useState
+
 ## 0.2.0.0 -- 2020-05-13
 
 * Some hooks supported:
