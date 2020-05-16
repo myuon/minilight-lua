@@ -27,13 +27,42 @@ import qualified SDL.Vect as Vect
 import SDL.Font (Font)
 import Paths_minilight_lua
 
-newtype LuaTable = LuaTable (Ptr ())
+data LuaValue
+  = LuaNil
+  | LuaBoolean Bool
+  | LuaString T.Text
+  | LuaNumber Double
+  | LuaTable Table
+  deriving (Read, Show)
 
-instance Lua.Peekable LuaTable where
-  peek = Lua.reportValueOnFailure "table" (fmap (Just . LuaTable) . Lua.topointer)
+newtype Table = Table [(LuaValue, LuaValue)]
+  deriving (Read, Show)
 
-instance Lua.Pushable LuaTable where
-  push (LuaTable p) = Lua.push p
+instance Lua.Peekable LuaValue where
+  peek i = do
+    ltype <- Lua.ltype i
+    case ltype of
+      Lua.TypeNil -> return LuaNil
+      Lua.TypeBoolean -> fmap LuaBoolean $ Lua.toboolean i
+      Lua.TypeNumber -> fmap (\(Just (Lua.Number v)) -> LuaNumber v) $ Lua.tonumber i
+      Lua.TypeString -> fmap (\(Just v) -> LuaString $ TLE.decodeUtf8 v) $ Lua.tostring i
+      Lua.TypeTable -> fmap LuaTable $ Lua.peek i
+
+instance Lua.Pushable LuaValue where
+  push val = case val of
+    LuaNil -> Lua.pushnil
+    LuaBoolean b -> Lua.pushboolean b
+    LuaString t -> Lua.pushstring $ TLE.encodeUtf8 t
+    LuaNumber d -> Lua.pushnumber $ Lua.Number d
+    LuaTable t -> Lua.push t
+
+instance Lua.Peekable Table where
+  peek i = fmap Table $ Lua.peekKeyValuePairs i
+
+instance Lua.Pushable Table where
+  push (Table kv) = do
+    Lua.newtable
+    mapM_ (\(k,v) -> Lua.push k *> Lua.push v *> Lua.rawset (-3)) kv
 
 data LuaComponentState = LuaComponentState {
   mousePosition :: IORef (V2 Int),
@@ -45,7 +74,7 @@ data LuaComponentState = LuaComponentState {
   numberStates :: IORef (M.Map String (Ptr Double)),
   boolStates :: IORef (M.Map String (Ptr Bool)),
   stringStates :: IORef (M.Map String (Ptr CString)),
-  tableStates :: IORef (M.Map String (Ptr (Ptr ()))),
+  tableStates :: IORef (M.Map String (Ptr CString)),
 
   -- Luaでの更新判定用
   updatedAtRef :: IORef UnixTime
@@ -283,23 +312,27 @@ loadLib state = do
   minilight_writeStateNumber :: Ptr Double -> Lua.Number -> Lua.Lua ()
   minilight_writeStateNumber p (Lua.Number v) = liftIO $ poke p v
 
-  minilight_newStateTable :: Int -> LuaTable -> Lua.Lua (Ptr (Ptr ()))
-  minilight_newStateTable index (LuaTable def) = liftIO $ do
+  minilight_newStateTable :: Int -> Table -> Lua.Lua (Ptr CString)
+  minilight_newStateTable index def = liftIO $ do
     m   <- readIORef $ tableStates state
     uat <- readIORef $ updatedAtRef state
     let key = show uat ++ "-" ++ show index
     case m M.!? key of
       Just k  -> return k
       Nothing -> do
-        p <- malloc
-        poke p def
+        p  <- malloc
+        cs <- newCString $ show def
+        poke p cs
         writeIORef (tableStates state) $ M.insert key p m
         return p
 
-  minilight_readStateTable :: Ptr (Ptr ()) -> Lua.Lua LuaTable
-  minilight_readStateTable p = liftIO $ fmap LuaTable $ peek p
+  minilight_readStateTable :: Ptr CString -> Lua.Lua Table
+  minilight_readStateTable p = liftIO $ do
+    cs <- peek p
+    fmap read $ peekCString cs
 
-  minilight_writeStateTable :: Ptr (Ptr ()) -> LuaTable -> Lua.Lua ()
-  minilight_writeStateTable p (LuaTable val) = liftIO $ do
+  minilight_writeStateTable :: Ptr CString -> Table -> Lua.Lua ()
+  minilight_writeStateTable p val = liftIO $ do
     peek p >>= free
-    poke p val
+    cs <- newCString $ show val
+    poke p cs
